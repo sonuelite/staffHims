@@ -1,3 +1,4 @@
+import axios from 'axios';
 import React, { useEffect, useState } from 'react';
 import type { BottomTabNavigationProp } from '@react-navigation/bottom-tabs';
 import { useDispatch, useSelector } from 'react-redux';
@@ -5,8 +6,6 @@ import { useDispatch, useSelector } from 'react-redux';
 import type { RootState, AppDispatch } from '../../../store/store';
 import type { DoctorTabParamList } from '../../../navigator/DoctorTabNavigator';
 import { setSelectedPatient } from '../../../store/consultSlice';
-
-
 
 import {
   getDoctorOpdDashboard,
@@ -16,6 +15,17 @@ import {
   getDosageList,
   getMedicineFrequencyList,
   getMedicineDurationList,
+  getMedicineRouteList,
+  getLaboratoryTestList,
+  getRadiologyTestList,
+  createConsultationOrder,
+  type CreateConsultationOrderPayload,
+  markConsultationComplete,
+  type MarkConsultationCompletePayload,
+} from '../../../network/api';
+import {
+  savePrescription,
+  type SavePrescriptionPayload,
 } from '../../../network/api';
 import type { QueuePatient } from '../queue/QueueScreen';
 import {
@@ -44,6 +54,8 @@ import {
   Heart,
   Radio,
   Trash2,
+  FlaskConical,
+  Radiation,
 } from 'lucide-react-native';
 import DoctorHeader from '../../../components/doctorHeader/DoctorHeader';
 
@@ -55,6 +67,53 @@ const tabs: ConsultationTab[] = [
   'Prescription',
   'Orders',
 ];
+
+interface InvestigationTest {
+  id: string;
+  name: string;
+  price: number;
+}
+
+const laboratoryTests: InvestigationTest[] = [
+  {
+    id: 'lab-1',
+    name: 'Blood Grouping & Cross-Matching',
+    price: 500,
+  },
+  {
+    id: 'lab-2',
+    name: 'Serum Lactate',
+    price: 900,
+  },
+  {
+    id: 'lab-3',
+    name: 'Blood Culture',
+    price: 1800,
+  },
+  {
+    id: 'lab-4',
+    name: 'Complete Blood Count (CBC)',
+    price: 450,
+  },
+  {
+    id: 'lab-5',
+    name: 'Renal Function Test (KFT/eGFR)',
+    price: 750,
+  },
+];
+
+// const radiologyTests: InvestigationTest[] = [
+//   {
+//     id: 'rad-1',
+//     name: 'Portable X-Ray Chest & Pelvis',
+//     price: 1200,
+//   },
+//   {
+//     id: 'rad-2',
+//     name: 'Bedside FAST Ultrasound Scan',
+//     price: 2500,
+//   },
+// ];
 
 interface PatientVitals {
   id: number;
@@ -139,6 +198,8 @@ interface MedicineItem {
   is_lasa: boolean;
   is_high_alert: boolean;
   lasa_warning: string | null;
+  tall_man_name?: string | null;
+  lasa_confused_with?: string | null;
 }
 
 // interface DosageItem {
@@ -171,6 +232,17 @@ interface DurationItem {
   duration_value: number;
   duration_unit: string;
   display_text: string;
+  status: string;
+  is_deleted: boolean;
+}
+
+interface MedicineRouteItem {
+  route_id: number;
+  entity_id: number;
+  route_code: string;
+  route_name: string;
+  description: string | null;
+  is_invasive: boolean;
   status: string;
   is_deleted: boolean;
 }
@@ -273,9 +345,184 @@ export default function ConsultScreen() {
     null,
   );
 
+  const [routeOptions, setRouteOptions] = useState<MedicineRouteItem[]>([]);
+  const [routeLoading, setRouteLoading] = useState(false);
+  const [routeError, setRouteError] = useState<string | null>(null);
+
+  const [selectedRouteId, setSelectedRouteId] = useState<number | null>(null);
+  const [selectedRouteName, setSelectedRouteName] = useState('');
+
+  const [prescriptionSaving, setPrescriptionSaving] = useState(false);
+
+  const [selectedOrders, setSelectedOrders] = useState<string[]>([]);
+
+  const [labTests, setLabTests] = useState<InvestigationTest[]>([]);
+  const [labLoading, setLabLoading] = useState(false);
+  const [labError, setLabError] = useState<string | null>(null);
+
+  const [radiologyTests, setRadiologyTests] = useState<InvestigationTest[]>([]);
+  const [radiologyLoading, setRadiologyLoading] = useState(false);
+  const [radiologyError, setRadiologyError] = useState<string | null>(null);
+
+  const [savingOrder, setSavingOrder] = useState(false);
+  const [completingConsultation, setCompletingConsultation] = useState(false);
+
+  const toggleOrder = (id: string) => {
+    setSelectedOrders(prev =>
+      prev.includes(id) ? prev.filter(item => item !== id) : [...prev, id],
+    );
+  };
+
+  const selectedOrderCount = selectedOrders.length;
+
+  // const handleDispatchOrders = () => {
+  //   if (!patient) {
+  //     Alert.alert('No Patient', 'Please select a patient first.');
+  //     return;
+  //   }
+
+  //   if (selectedOrders.length === 0) {
+  //     Alert.alert(
+  //       'No Tests Selected',
+  //       'Please select at least one laboratory or radiology test.',
+  //     );
+  //     return;
+  //   }
+
+  //   Alert.alert(
+  //     'Orders Selected',
+  //     `${selectedOrders.length} investigation(s) selected for ${patient.patient_name}.`,
+  //   );
+  // };
+  // const [additionalNotes, setAdditionalNotes] = useState('');
+
   // const filteredMedicines = medicineOptions.filter(item =>
   //   item.medicine_name?.toLowerCase().includes(medicineSearch.toLowerCase()),
   // );
+
+  const handleDispatchOrders = async () => {
+    if (savingOrder) return;
+
+    if (!patient || !doctor || !accessToken) {
+      Alert.alert('Error', 'Patient or doctor session is unavailable.');
+      return;
+    }
+
+    if (selectedOrders.length === 0) {
+      Alert.alert('No Tests Selected', 'Please select at least one test.');
+      return;
+    }
+
+    const departmentId = Number(patient.department_id);
+
+    if (!Number.isInteger(departmentId) || departmentId <= 0) {
+      Alert.alert('Error', 'Valid department ID is required.');
+      return;
+    }
+
+    const selectedLabs = labTests.filter(test =>
+      selectedOrders.includes(test.id),
+    );
+
+    const selectedRadiology = radiologyTests.filter(test =>
+      selectedOrders.includes(test.id),
+    );
+
+    if (
+      selectedLabs.length + selectedRadiology.length !==
+      selectedOrders.length
+    ) {
+      Alert.alert(
+        'Invalid Selection',
+        'Some selected tests are unavailable. Please select them again.',
+      );
+      return;
+    }
+
+    const laboratoryOrders = selectedLabs.map(test => ({
+      test_id: Number(test.id.replace('lab-', '')),
+      priority: 'Routine',
+    }));
+
+    const radiologyOrders = selectedRadiology.map(test => ({
+      test_id: Number(test.id.replace('rad-', '')),
+      priority: 'Routine',
+    }));
+
+    const totalAmount = [...selectedLabs, ...selectedRadiology].reduce(
+      (sum, test) => sum + test.price,
+      0,
+    );
+
+    if (
+      [...laboratoryOrders, ...radiologyOrders].some(
+        test => !Number.isSafeInteger(test.test_id) || test.test_id <= 0,
+      ) ||
+      !Number.isFinite(totalAmount) ||
+      totalAmount < 0
+    ) {
+      Alert.alert('Error', 'Invalid test ID or amount.');
+      return;
+    }
+
+    const payload: CreateConsultationOrderPayload = {
+      patient_id: patient.patient_id,
+      doctor_id: doctor.employee_id,
+      department_id: departmentId,
+      visit_id: patient.visit_id,
+      created_by: doctor.employee_id,
+      total_amount: totalAmount,
+      discount_percent: 0,
+      paid_amount: 0,
+      laboratory_tests: laboratoryOrders,
+      radiology_tests: radiologyOrders,
+    };
+
+    try {
+      setSavingOrder(true);
+
+      console.log(
+        'Create Consultation Order Payload:',
+        JSON.stringify(payload, null, 2),
+      );
+
+      const response = await createConsultationOrder(accessToken, payload);
+
+      console.log(
+        'Create Consultation Order Response:',
+        JSON.stringify(response, null, 2),
+      );
+
+      if (response?.success === false) {
+        throw new Error(
+          response.message || 'Failed to create consultation order.',
+        );
+      }
+
+      Alert.alert(
+        'Success',
+        response?.message || 'Consultation order created successfully.',
+      );
+
+      setSelectedOrders([]);
+    } catch (error: unknown) {
+      const message = axios.isAxiosError(error)
+        ? error.response?.data?.message || error.message
+        : error instanceof Error
+        ? error.message
+        : 'Failed to create consultation order.';
+
+      console.log(
+        'Create Consultation Order Error:',
+        axios.isAxiosError(error) ? error.response?.data : message,
+      );
+
+      Alert.alert('Error', message);
+    } finally {
+      setSavingOrder(false);
+    }
+  };
+
   const filteredMedicines = medicineOptions.filter(item => {
     const search = medicineSearch.trim().toLowerCase();
 
@@ -713,12 +960,293 @@ export default function ConsultScreen() {
     };
   }, [accessToken]);
 
+  useEffect(() => {
+    if (!accessToken) {
+      setRouteOptions([]);
+      return;
+    }
+
+    let active = true;
+
+    const fetchRoutes = async () => {
+      try {
+        setRouteLoading(true);
+        setRouteError(null);
+
+        const response = await getMedicineRouteList(accessToken);
+
+        if (!active) return;
+
+        console.log(
+          'Medicine Route List API Response:',
+          JSON.stringify(response, null, 2),
+        );
+
+        setRouteOptions(Array.isArray(response.data) ? response.data : []);
+      } catch (error: unknown) {
+        if (!active) return;
+
+        setRouteError(
+          error instanceof Error
+            ? error.message
+            : 'Failed to fetch medicine routes',
+        );
+
+        setRouteOptions([]);
+      } finally {
+        if (active) {
+          setRouteLoading(false);
+        }
+      }
+    };
+
+    fetchRoutes();
+
+    return () => {
+      active = false;
+    };
+  }, [accessToken]);
+
+  useEffect(() => {
+    if (!accessToken) {
+      setLabTests([]);
+      return;
+    }
+
+    let active = true;
+
+    const fetchLaboratoryTests = async () => {
+      try {
+        setLabLoading(true);
+        setLabError(null);
+
+        const response = await getLaboratoryTestList(accessToken);
+
+        console.log(
+          'Laboratory Test List API Response:',
+          JSON.stringify(response, null, 2),
+        );
+
+        if (!active) return;
+
+        // Temporary mapping until the actual API response is confirmed.
+        const tests = Array.isArray(response.data) ? response.data : [];
+
+        setLabTests(
+          tests
+            .filter(
+              (item: { id: number; status: string }) =>
+                item.status === 'ACTIVE' && item.id != null,
+            )
+            .map(
+              (item: {
+                id: number;
+                test_name: string;
+                price: number | string;
+              }) => ({
+                id: `lab-${item.id}`,
+                name: item.test_name.trim(),
+                price: Number(item.price ?? 0),
+              }),
+            ),
+        );
+      } catch (error: unknown) {
+        if (!active) return;
+
+        const message = axios.isAxiosError(error)
+          ? error.response?.data?.message || error.message
+          : error instanceof Error
+          ? error.message
+          : 'Failed to fetch laboratory tests';
+
+        setLabError(message);
+        setLabTests([]);
+
+        console.log('Laboratory Test API Error:', message);
+      } finally {
+        if (active) {
+          setLabLoading(false);
+        }
+      }
+    };
+
+    fetchLaboratoryTests();
+
+    return () => {
+      active = false;
+    };
+  }, [accessToken]);
+
+  useEffect(() => {
+    if (!accessToken) {
+      setRadiologyTests([]);
+      setRadiologyError(null);
+      return;
+    }
+
+    let active = true;
+
+    const fetchRadiologyTests = async () => {
+      try {
+        setRadiologyLoading(true);
+        setRadiologyError(null);
+
+        const response = await getRadiologyTestList(accessToken);
+
+        console.log(
+          'Radiology Test List API Response:',
+          JSON.stringify(response, null, 2),
+        );
+
+        if (!active) return;
+
+        const tests = Array.isArray(response.data) ? response.data : [];
+
+        setRadiologyTests(
+          tests
+            .filter(
+              (item: { id: number; status: string }) =>
+                item.id != null && item.status === 'ACTIVE',
+            )
+            .map(
+              (item: {
+                id: number;
+                test_name: string;
+                price: number | string;
+              }) => ({
+                id: `rad-${item.id}`,
+                name: item.test_name?.trim() || 'Unnamed Radiology Test',
+                price: Number(item.price ?? 0),
+              }),
+            ),
+        );
+      } catch (error: unknown) {
+        if (!active) return;
+
+        const message = axios.isAxiosError(error)
+          ? error.response?.data?.message || error.message
+          : error instanceof Error
+          ? error.message
+          : 'Failed to fetch radiology tests';
+
+        setRadiologyError(message);
+        setRadiologyTests([]);
+
+        console.log('Radiology Test API Error:', message);
+      } finally {
+        if (active) {
+          setRadiologyLoading(false);
+        }
+      }
+    };
+
+    fetchRadiologyTests();
+
+    return () => {
+      active = false;
+    };
+  }, [accessToken]);
+
   const patientName = patient?.patient_name ?? 'Patient Name';
   const patientUhid = patient?.uhid ?? '--';
   const patientToken = patient?.token_no ?? '--';
   const patientGender = patient?.gender ?? '--';
   const patientAge = patient?.age ?? '--';
   const patientAllergies = patient?.allergies;
+
+  const handleCompleteConsultation = () => {
+    if (completingConsultation) return;
+
+    if (!patient || !doctor || !accessToken) {
+      Alert.alert('Error', 'Patient or doctor session is unavailable.');
+      return;
+    }
+
+    const departmentId = Number(patient.department_id);
+
+    if (!Number.isSafeInteger(departmentId) || departmentId <= 0) {
+      Alert.alert('Missing Department', 'A valid department ID is required.');
+      return;
+    }
+
+    Alert.alert(
+      'Complete Consultation',
+      `Are you sure you want to complete the consultation for ${patient.patient_name}?`,
+      [
+        {
+          text: 'Cancel',
+          style: 'cancel',
+        },
+        {
+          text: 'Complete',
+          onPress: async () => {
+            const payload: MarkConsultationCompletePayload = {
+              patient_id: patient.patient_id,
+              doctor_id: doctor.employee_id,
+              department_id: departmentId,
+              visit_id: patient.visit_id,
+              status: 'Completed',
+              updated_by: doctor.employee_id,
+            };
+
+            try {
+              setCompletingConsultation(true);
+
+              console.log(
+                'Complete Consultation Payload:',
+                JSON.stringify(payload, null, 2),
+              );
+
+              const response = await markConsultationComplete(
+                accessToken,
+                payload,
+              );
+
+              console.log(
+                'Complete Consultation Response:',
+                JSON.stringify(response, null, 2),
+              );
+
+              if (response?.success === false) {
+                throw new Error(
+                  response.message || 'Failed to complete consultation.',
+                );
+              }
+
+              Alert.alert(
+                'Success',
+                response?.message || 'Consultation completed successfully.',
+                [
+                  {
+                    text: 'OK',
+                    onPress: () => {
+                      dispatch(setSelectedPatient(null));
+                      navigation.navigate('Queue');
+                    },
+                  },
+                ],
+              );
+            } catch (error: unknown) {
+              const message = axios.isAxiosError(error)
+                ? error.response?.data?.message || error.message
+                : error instanceof Error
+                ? error.message
+                : 'Failed to complete consultation.';
+
+              console.log(
+                'Complete Consultation Error:',
+                axios.isAxiosError(error) ? error.response?.data : message,
+              );
+
+              Alert.alert('Error', message);
+            } finally {
+              setCompletingConsultation(false);
+            }
+          },
+        },
+      ],
+    );
+  };
 
   const renderVitals = () => (
     <View style={styles.section}>
@@ -925,37 +1453,169 @@ export default function ConsultScreen() {
     setSelectedFrequencyId(null);
     setSelectedDurationId(null);
     setShowDurationList(false);
+
+    setSelectedRouteId(null);
+    setSelectedRouteName('');
   };
 
-  const handleConfirmPrescription = () => {
+  //   const handleConfirmPrescription = () => {
+  //     if (
+  //       selectedMedicineId == null ||
+  //       selectedDosageId == null ||
+  //       selectedFrequencyId == null ||
+  //       selectedDurationId == null ||
+  //       !total.trim()
+  //     ) {
+  //       Alert.alert('Required Fields', 'Please fill all prescription fields.');
+  //       return;
+  //     }
+  // if (selectedRouteId == null) {
+  //   Alert.alert('Required Field', 'Please select a medicine route.');
+  //   return;
+  // }
+  //     const newMedicine: Medicine = {
+  //       id: Date.now(),
+  //       name: medicineName,
+  //       dosage,
+  //       frequency,
+  //       duration,
+  //       total,
+  //     };
+
+  //     setActiveMedicines(prev => [...prev, newMedicine]);
+
+  //     resetPrescription();
+
+  //     Alert.alert(
+  //       'Added to Preview',
+  //       'Medicine added to the local prescription preview.',
+  //     );
+  //   };
+
+  const handleConfirmPrescription = async () => {
+    if (prescriptionSaving) return;
+
+    if (!accessToken || !patient || !doctor) {
+      Alert.alert('Error', 'Patient or doctor session is unavailable.');
+      return;
+    }
+
     if (
       selectedMedicineId == null ||
       selectedDosageId == null ||
       selectedFrequencyId == null ||
       selectedDurationId == null ||
+      selectedRouteId == null ||
       !total.trim()
     ) {
       Alert.alert('Required Fields', 'Please fill all prescription fields.');
       return;
     }
 
-    const newMedicine: Medicine = {
-      id: Date.now(),
-      name: medicineName,
-      dosage,
-      frequency,
-      duration,
-      total,
+    const quantity = Number(total.trim());
+
+    if (!Number.isSafeInteger(quantity) || quantity <= 0) {
+      Alert.alert('Invalid Quantity', 'Enter a valid positive quantity.');
+      return;
+    }
+
+    const selectedMedicine = medicineOptions.find(
+      item => item.id === selectedMedicineId,
+    );
+
+    if (!selectedMedicine) {
+      Alert.alert('Error', 'Selected medicine not found.');
+      return;
+    }
+
+    // Use the actual department ID associated with this visit.
+    // Ensure your QueuePatient type and dashboard response provide it.
+    const departmentId = patient.department_id;
+
+    if (typeof departmentId !== 'number' || departmentId <= 0) {
+      Alert.alert(
+        'Missing Department',
+        'A valid department ID is required to save the prescription.',
+      );
+      return;
+    }
+
+    const payload: SavePrescriptionPayload = {
+      patient_id: patient.patient_id,
+      doctor_id: doctor.employee_id,
+      department_id: departmentId,
+      visit_id: patient.visit_id,
+
+      // Confirm with backend which authenticated user ID is required.
+      created_by: doctor.employee_id,
+
+      medicines: [
+        {
+          id: selectedMedicine.id,
+          name: selectedMedicine.item_name,
+          dosage: selectedDosageId,
+          frequency: String(selectedFrequencyId),
+          duration: String(selectedDurationId),
+          route: selectedRouteId,
+          instructions: selectedMedicine.instructions ?? '',
+          is_lasa: selectedMedicine.is_lasa ?? false,
+          is_high_alert: selectedMedicine.is_high_alert ?? false,
+          tall_man_name: selectedMedicine.tall_man_name ?? '',
+          lasa_confused_with: selectedMedicine.lasa_confused_with ?? '',
+          lasa_warning: selectedMedicine.lasa_warning ?? '',
+          total: quantity,
+        },
+      ],
+
+      // additional_notes: additionalNotes.trim(),
+      additional_notes: '',
     };
 
-    setActiveMedicines(prev => [...prev, newMedicine]);
+    try {
+      setPrescriptionSaving(true);
+      console.log(
+        'Save Prescription Payload:',
+        JSON.stringify(payload, null, 2),
+      );
+      const response = await savePrescription(accessToken, payload);
+      console.log(
+        'Save Prescription API Response:',
+        JSON.stringify(response, null, 2),
+      );
 
-    resetPrescription();
+      if (!response?.prescription_id) {
+        throw new Error(response?.message || 'Failed to save prescription.');
+      }
 
-    Alert.alert(
-      'Added to Preview',
-      'Medicine added to the local prescription preview.',
-    );
+      const newMedicine: Medicine = {
+        id: Date.now(),
+        name: medicineName,
+        dosage,
+        frequency,
+        duration,
+        total: String(quantity),
+      };
+
+      setActiveMedicines(prev => [...prev, newMedicine]);
+
+      resetPrescription();
+      // setAdditionalNotes('');
+
+      Alert.alert(
+        'Success',
+        response.message || 'Prescription saved successfully.',
+      );
+    } catch (error: unknown) {
+      const message = axios.isAxiosError(error)
+        ? error.response?.data?.message || error.message
+        : error instanceof Error
+        ? error.message
+        : 'Failed to save prescription.';
+
+      Alert.alert('Error', message);
+    } finally {
+      setPrescriptionSaving(false);
+    }
   };
 
   const handleRemoveMedicine = (id: number) => {
@@ -965,14 +1625,14 @@ export default function ConsultScreen() {
   const activeFrequencyOptions = frequencyOptions.filter(
     item => (!item.status || item.status === 'ACTIVE') && !item.is_deleted,
   );
-  
+
   const activeDosageOptions = dosageOptions.filter(
     item => item.status === 'ACTIVE' && !item.is_deleted,
   );
 
   const activeDurationOptions = durationOptions.filter(
-  item => item.status === 'ACTIVE' && !item.is_deleted,
-);
+    item => item.status === 'ACTIVE' && !item.is_deleted,
+  );
 
   const renderPrescription = () => (
     <View style={styles.prescriptionContainer}>
@@ -1146,7 +1806,8 @@ export default function ConsultScreen() {
                 setShowMedicineList(false);
                 setShowFrequencyList(false);
                 setShowDurationList(false);
-              }}>
+              }}
+            >
               <Text style={styles.dropdownText} numberOfLines={1}>
                 {dosage || 'Select'}
               </Text>
@@ -1155,13 +1816,23 @@ export default function ConsultScreen() {
             {showDosageList && (
               <View style={styles.dropdownOptions}>
                 {dosageLoading ? (
-                  <ActivityIndicator size="small" color="#104B80" style={{marginVertical: 15}} />
+                  <ActivityIndicator
+                    size="small"
+                    color="#104B80"
+                    style={{ marginVertical: 15 }}
+                  />
                 ) : dosageError ? (
                   <Text style={styles.dropdownMessage}>{dosageError}</Text>
                 ) : activeDosageOptions.length === 0 ? (
-                  <Text style={styles.dropdownMessage}>No dosage options available</Text>
+                  <Text style={styles.dropdownMessage}>
+                    No dosage options available
+                  </Text>
                 ) : (
-                  <ScrollView nestedScrollEnabled keyboardShouldPersistTaps="handled" style={{maxHeight: 200}}>
+                  <ScrollView
+                    nestedScrollEnabled
+                    keyboardShouldPersistTaps="handled"
+                    style={{ maxHeight: 200 }}
+                  >
                     {activeDosageOptions.map(item => (
                       <TouchableOpacity
                         key={item.dosage_form_id}
@@ -1170,8 +1841,11 @@ export default function ConsultScreen() {
                           setSelectedDosageId(item.dosage_form_id);
                           setDosage(item.dosage_form_name);
                           setShowDosageList(false);
-                        }}>
-                        <Text style={styles.dropdownOptionText}>{item.dosage_form_name}</Text>
+                        }}
+                      >
+                        <Text style={styles.dropdownOptionText}>
+                          {item.dosage_form_name}
+                        </Text>
                       </TouchableOpacity>
                     ))}
                   </ScrollView>
@@ -1189,7 +1863,8 @@ export default function ConsultScreen() {
                 setShowMedicineList(false);
                 setShowDosageList(false);
                 setShowDurationList(false);
-              }}>
+              }}
+            >
               <Text style={styles.dropdownText} numberOfLines={1}>
                 {frequency || 'Select'}
               </Text>
@@ -1198,13 +1873,23 @@ export default function ConsultScreen() {
             {showFrequencyList && (
               <View style={styles.dropdownOptions}>
                 {frequencyLoading ? (
-                  <ActivityIndicator size="small" color="#104B80" style={{marginVertical: 15}} />
+                  <ActivityIndicator
+                    size="small"
+                    color="#104B80"
+                    style={{ marginVertical: 15 }}
+                  />
                 ) : frequencyError ? (
                   <Text style={styles.dropdownMessage}>{frequencyError}</Text>
                 ) : activeFrequencyOptions.length === 0 ? (
-                  <Text style={styles.dropdownMessage}>No frequency options available</Text>
+                  <Text style={styles.dropdownMessage}>
+                    No frequency options available
+                  </Text>
                 ) : (
-                  <ScrollView nestedScrollEnabled keyboardShouldPersistTaps="handled" style={{maxHeight: 200}}>
+                  <ScrollView
+                    nestedScrollEnabled
+                    keyboardShouldPersistTaps="handled"
+                    style={{ maxHeight: 200 }}
+                  >
                     {activeFrequencyOptions.map(item => (
                       <TouchableOpacity
                         key={item.frequency_id}
@@ -1213,8 +1898,11 @@ export default function ConsultScreen() {
                           setSelectedFrequencyId(item.frequency_id);
                           setFrequency(item.frequency_name);
                           setShowFrequencyList(false);
-                        }}>
-                        <Text style={styles.dropdownOptionText}>{item.frequency_name}</Text>
+                        }}
+                      >
+                        <Text style={styles.dropdownOptionText}>
+                          {item.frequency_name}
+                        </Text>
                       </TouchableOpacity>
                     ))}
                   </ScrollView>
@@ -1235,7 +1923,8 @@ export default function ConsultScreen() {
                 setShowMedicineList(false);
                 setShowDosageList(false);
                 setShowFrequencyList(false);
-              }}>
+              }}
+            >
               <Text style={styles.dropdownText} numberOfLines={1}>
                 {duration || 'Select'}
               </Text>
@@ -1244,13 +1933,23 @@ export default function ConsultScreen() {
             {showDurationList && (
               <View style={styles.dropdownOptions}>
                 {durationLoading ? (
-                  <ActivityIndicator size="small" color="#104B80" style={{marginVertical: 15}} />
+                  <ActivityIndicator
+                    size="small"
+                    color="#104B80"
+                    style={{ marginVertical: 15 }}
+                  />
                 ) : durationError ? (
                   <Text style={styles.dropdownMessage}>{durationError}</Text>
                 ) : activeDurationOptions.length === 0 ? (
-                  <Text style={styles.dropdownMessage}>No duration options available</Text>
+                  <Text style={styles.dropdownMessage}>
+                    No duration options available
+                  </Text>
                 ) : (
-                  <ScrollView nestedScrollEnabled keyboardShouldPersistTaps="handled" style={{maxHeight: 200}}>
+                  <ScrollView
+                    nestedScrollEnabled
+                    keyboardShouldPersistTaps="handled"
+                    style={{ maxHeight: 200 }}
+                  >
                     {activeDurationOptions.map(item => (
                       <TouchableOpacity
                         key={item.duration_id}
@@ -1259,8 +1958,11 @@ export default function ConsultScreen() {
                           setSelectedDurationId(item.duration_id);
                           setDuration(item.display_text);
                           setShowDurationList(false);
-                        }}>
-                        <Text style={styles.dropdownOptionText}>{item.display_text}</Text>
+                        }}
+                      >
+                        <Text style={styles.dropdownOptionText}>
+                          {item.display_text}
+                        </Text>
                       </TouchableOpacity>
                     ))}
                   </ScrollView>
@@ -1281,15 +1983,64 @@ export default function ConsultScreen() {
           </View>
         </View>
 
+        <View style={styles.routeSection}>
+          <Text style={styles.prescriptionLabel}>Route</Text>
+
+          {routeLoading ? (
+            <ActivityIndicator size="small" color="#104B80" />
+          ) : routeError ? (
+            <Text style={{ color: '#DC2626' }}>{routeError}</Text>
+          ) : (
+            <View style={styles.routeOptionsContainer}>
+              {routeOptions
+                .filter(item => item.status === 'ACTIVE' && !item.is_deleted)
+                .map(item => (
+                  <TouchableOpacity
+                    key={item.route_id}
+                    style={[
+                      styles.routeButton,
+                      selectedRouteId === item.route_id &&
+                        styles.routeButtonSelected,
+                    ]}
+                    onPress={() => {
+                      setSelectedRouteId(item.route_id);
+                      setSelectedRouteName(item.route_name);
+                    }}
+                  >
+                    <Text
+                      style={[
+                        styles.routeButtonText,
+                        selectedRouteId === item.route_id &&
+                          styles.routeButtonTextSelected,
+                      ]}
+                    >
+                      {item.route_name}
+                    </Text>
+                  </TouchableOpacity>
+                ))}
+            </View>
+          )}
+        </View>
+
         {/* Confirm Button */}
         <TouchableOpacity
-          style={styles.confirmPrescriptionButton}
+          style={[
+            styles.confirmPrescriptionButton,
+            prescriptionSaving && { opacity: 0.6 },
+          ]}
           onPress={handleConfirmPrescription}
+          disabled={prescriptionSaving}
         >
-          <CheckCircle2 size={19} color="#FFFFFF" />
+          {prescriptionSaving ? (
+            <ActivityIndicator size="small" color="#FFFFFF" />
+          ) : (
+            <CheckCircle2 size={19} color="#FFFFFF" />
+          )}
 
           <Text style={styles.confirmPrescriptionText}>
-            Confirm & Prescribe Medicine
+            {prescriptionSaving
+              ? 'Saving Prescription...'
+              : 'Confirm & Prescribe Medicine'}
           </Text>
         </TouchableOpacity>
       </View>
@@ -1342,6 +2093,149 @@ export default function ConsultScreen() {
       </View>
     </View>
   );
+
+  const renderOrders = () => {
+    const renderTestGroup = (
+      title: string,
+      tests: InvestigationTest[],
+      type: 'lab' | 'radiology',
+    ) => (
+      <View style={styles.orderCard}>
+        <View style={styles.orderCardHeader}>
+          {type === 'lab' ? (
+            <FlaskConical size={18} color="#008B83" />
+          ) : (
+            <Radiation size={18} color="#D6A000" />
+          )}
+
+          <Text style={styles.orderCardTitle}>{title}</Text>
+        </View>
+
+        <View style={styles.orderDivider} />
+
+        {tests.map(test => {
+          const isSelected = selectedOrders.includes(test.id);
+
+          return (
+            <TouchableOpacity
+              key={test.id}
+              style={styles.orderTestRow}
+              activeOpacity={0.75}
+              onPress={() => toggleOrder(test.id)}
+            >
+              <View
+                style={[
+                  styles.orderCheckbox,
+                  isSelected && styles.orderCheckboxSelected,
+                ]}
+              >
+                {isSelected && <Text style={styles.orderCheckmark}>✓</Text>}
+              </View>
+
+              <Text style={styles.orderTestName} numberOfLines={2}>
+                {test.name}
+              </Text>
+
+              <Text style={styles.orderTestPrice}>₹{test.price}</Text>
+            </TouchableOpacity>
+          );
+        })}
+      </View>
+    );
+
+    return (
+      <View style={styles.ordersContainer}>
+        <View style={styles.ordersHeader}>
+          <View style={styles.ordersHeaderInfo}>
+            <Text style={styles.ordersTitle}>Investigations Checklist</Text>
+            <Text style={styles.ordersSubtitle}>
+              Order labs and radiology imaging
+            </Text>
+          </View>
+
+          {/* <TouchableOpacity
+            style={[
+              styles.dispatchOrdersButton,
+              selectedOrderCount === 0 && { opacity: 0.6 },
+            ]}
+            activeOpacity={0.8}
+            onPress={handleDispatchOrders}
+          >
+            <Text style={styles.dispatchOrdersText}>Dispatch Orders</Text>
+          </TouchableOpacity> */}
+
+          <TouchableOpacity
+            style={[
+              styles.dispatchOrdersButton,
+              (selectedOrderCount === 0 || savingOrder) && {
+                opacity: 0.6,
+              },
+            ]}
+            activeOpacity={0.8}
+            onPress={handleDispatchOrders}
+            disabled={selectedOrderCount === 0 || savingOrder}
+          >
+            {savingOrder ? (
+              <ActivityIndicator size="small" color="#FFFFFF" />
+            ) : (
+              <Text style={styles.dispatchOrdersText}>Dispatch Orders</Text>
+            )}
+          </TouchableOpacity>
+        </View>
+
+        {selectedOrderCount > 0 && (
+          <View style={styles.selectedOrdersRow}>
+            <Text style={styles.selectedOrdersText}>
+              {selectedOrderCount} test(s) selected
+            </Text>
+          </View>
+        )}
+
+        {labLoading ? (
+          <View style={styles.orderCard}>
+            <ActivityIndicator size="small" color="#104B80" />
+            <Text style={styles.placeholderText}>
+              Loading laboratory tests...
+            </Text>
+          </View>
+        ) : labError ? (
+          <View style={styles.orderCard}>
+            <Text style={styles.placeholderText}>{labError}</Text>
+          </View>
+        ) : labTests.length === 0 ? (
+          <View style={styles.orderCard}>
+            <Text style={styles.placeholderText}>
+              No laboratory tests available
+            </Text>
+          </View>
+        ) : (
+          renderTestGroup('Laboratory Tests', labTests, 'lab')
+        )}
+
+        {/* {renderTestGroup('Radiology Tests', radiologyTests, 'radiology')} */}
+        {radiologyLoading ? (
+          <View style={styles.orderCard}>
+            <ActivityIndicator size="small" color="#104B80" />
+            <Text style={styles.placeholderText}>
+              Loading radiology tests...
+            </Text>
+          </View>
+        ) : radiologyError ? (
+          <View style={styles.orderCard}>
+            <Text style={styles.placeholderText}>{radiologyError}</Text>
+          </View>
+        ) : radiologyTests.length === 0 ? (
+          <View style={styles.orderCard}>
+            <Text style={styles.placeholderText}>
+              No radiology tests available
+            </Text>
+          </View>
+        ) : (
+          renderTestGroup('Radiology Tests', radiologyTests, 'radiology')
+        )}
+      </View>
+    );
+  };
 
   const renderTabContent = () => {
     switch (activeTab) {
@@ -1420,12 +2314,14 @@ export default function ConsultScreen() {
       case 'Prescription':
         return renderPrescription();
 
+      // case 'Orders':
+      //   return (
+      //     <View style={styles.placeholder}>
+      //       <Text style={styles.placeholderText}>Orders</Text>
+      //     </View>
+      //   );
       case 'Orders':
-        return (
-          <View style={styles.placeholder}>
-            <Text style={styles.placeholderText}>Orders</Text>
-          </View>
-        );
+        return renderOrders();
     }
   };
 
@@ -1453,9 +2349,29 @@ export default function ConsultScreen() {
             <Text style={styles.signText}>Sign</Text>
           </TouchableOpacity>
 
-          <TouchableOpacity style={styles.completeButton} onPress={() => {}}>
+          {/* <TouchableOpacity style={styles.completeButton} onPress={() => {}}>
             <CheckCircle2 size={18} color="#FFFFFF" />
             <Text style={styles.completeText}>Complete</Text>
+          </TouchableOpacity> */}
+
+          <TouchableOpacity
+            style={[
+              styles.completeButton,
+              completingConsultation && { opacity: 0.6 },
+            ]}
+            onPress={handleCompleteConsultation}
+            disabled={completingConsultation}
+            activeOpacity={0.8}
+          >
+            {completingConsultation ? (
+              <ActivityIndicator size="small" color="#FFFFFF" />
+            ) : (
+              <CheckCircle2 size={18} color="#FFFFFF" />
+            )}
+
+            <Text style={styles.completeText}>
+              {completingConsultation ? 'Completing...' : 'Complete'}
+            </Text>
           </TouchableOpacity>
         </View>
       </View>
@@ -2178,5 +3094,174 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     color: '#DC2626',
     marginTop: 4,
+  },
+  routeSection: {
+    marginTop: 10,
+    marginBottom: 16,
+  },
+
+  routeOptionsContainer: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+    marginTop: 6,
+  },
+
+  routeButton: {
+    paddingHorizontal: 13,
+    paddingVertical: 8,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: '#C7D6EB',
+    backgroundColor: '#FFFFFF',
+  },
+
+  routeButtonSelected: {
+    backgroundColor: '#104B80',
+    borderColor: '#104B80',
+  },
+
+  routeButtonText: {
+    fontSize: 12,
+    fontWeight: '500',
+    color: '#243F65',
+  },
+
+  routeButtonTextSelected: {
+    color: '#FFFFFF',
+    fontWeight: '700',
+  },
+  ordersContainer: {
+    paddingHorizontal: 16,
+    paddingTop: 18,
+    paddingBottom: 24,
+    backgroundColor: '#FFFFFF',
+  },
+
+  ordersHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 16,
+    gap: 10,
+  },
+
+  ordersHeaderInfo: {
+    flex: 1,
+  },
+
+  ordersTitle: {
+    fontSize: 17,
+    fontWeight: '800',
+    color: '#071A36',
+  },
+
+  ordersSubtitle: {
+    fontSize: 12,
+    color: '#526B91',
+    marginTop: 4,
+  },
+
+  dispatchOrdersButton: {
+    backgroundColor: '#104B80',
+    paddingHorizontal: 13,
+    paddingVertical: 12,
+    borderRadius: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+
+  dispatchOrdersText: {
+    color: '#FFFFFF',
+    fontSize: 12,
+    fontWeight: '700',
+  },
+
+  selectedOrdersRow: {
+    backgroundColor: '#EFF6FF',
+    paddingHorizontal: 12,
+    paddingVertical: 9,
+    borderRadius: 8,
+    marginBottom: 12,
+  },
+
+  selectedOrdersText: {
+    color: '#104B80',
+    fontSize: 12,
+    fontWeight: '700',
+  },
+
+  orderCard: {
+    backgroundColor: '#FFFFFF',
+    borderWidth: 1,
+    borderColor: '#DCE5F0',
+    borderRadius: 18,
+    paddingHorizontal: 16,
+    paddingVertical: 14,
+    marginBottom: 15,
+  },
+
+  orderCardHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 9,
+    paddingBottom: 12,
+  },
+
+  orderCardTitle: {
+    fontSize: 14,
+    fontWeight: '800',
+    color: '#153F84',
+  },
+
+  orderDivider: {
+    height: 1,
+    backgroundColor: '#E8EDF5',
+    marginBottom: 4,
+  },
+
+  orderTestRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    minHeight: 44,
+    paddingVertical: 8,
+    gap: 11,
+  },
+
+  orderCheckbox: {
+    width: 18,
+    height: 18,
+    borderRadius: 3,
+    borderWidth: 1.5,
+    borderColor: '#8B929C',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#FFFFFF',
+  },
+
+  orderCheckboxSelected: {
+    backgroundColor: '#1680FF',
+    borderColor: '#1680FF',
+  },
+
+  orderCheckmark: {
+    color: '#FFFFFF',
+    fontSize: 13,
+    fontWeight: '800',
+    lineHeight: 16,
+  },
+
+  orderTestName: {
+    flex: 1,
+    fontSize: 12,
+    fontWeight: '500',
+    color: '#071A36',
+  },
+
+  orderTestPrice: {
+    fontSize: 11,
+    fontWeight: '500',
+    color: '#344B70',
+    textAlign: 'right',
   },
 });

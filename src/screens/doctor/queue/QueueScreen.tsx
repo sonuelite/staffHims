@@ -61,6 +61,7 @@ export interface QueuePatient {
   patient_name: string;
   gender: string;
   age: number;
+  department_id: number;
   department_name: string;
   demographics_text: string;
   phone: string;
@@ -179,6 +180,8 @@ export default function QueueScreen() {
     const {user, accessToken} = useSelector(
   (state: RootState) => state.auth,
 );
+console.log('Redux Access Token:', accessToken);
+
 
   const [search, setSearch] = useState('');
   const [activeFilter, setActiveFilter] = useState<FilterStatus>('All');

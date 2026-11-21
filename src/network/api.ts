@@ -28,6 +28,7 @@ export const getDoctorOpdDashboard = async (
   accessToken: string,
   status: string = 'all',
 ) => {
+  console.log('Access Token:', accessToken);
   const response = await axios.get(
     `${BASE_URL}/api/v1/doctor/opd-dashboard`,
     {
@@ -234,6 +235,201 @@ export const getMedicineDurationList = async (
         Authorization: `Bearer ${accessToken}`,
         'x-entity-id': '1',
         Accept: 'application/json',
+      },
+    },
+  );
+
+  return response.data;
+};
+
+// Get Medicine Route List API
+export const getMedicineRouteList = async (
+  accessToken: string,
+) => {
+  const response = await axios.get(
+    `${BASE_URL}/api/v1/medicine-route-list`,
+    {
+      params: {
+        page_url: '/master/opd-management/patients/consultation',
+        page_name: 'consultation',
+      },
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+        'x-entity-id': '1',
+        Accept: 'application/json',
+      },
+    },
+  );
+
+  return response.data;
+};
+
+// Save Prescription API
+
+export interface PrescriptionMedicinePayload {
+  id: number;
+  name: string;
+  dosage: number;
+  frequency: string;
+  duration: string;
+  route: number;
+  instructions: string;
+  is_lasa: boolean;
+  is_high_alert: boolean;
+  tall_man_name: string;
+  lasa_confused_with: string;
+  lasa_warning: string;
+  total: number;
+}
+
+export interface SavePrescriptionPayload {
+  patient_id: number;
+  doctor_id: number;
+  department_id: number;
+  visit_id: number;
+  created_by: number;
+  medicines: PrescriptionMedicinePayload[];
+  additional_notes: string;
+}
+
+export const savePrescription = async (
+  accessToken: string,
+  payload: SavePrescriptionPayload,
+) => {
+  const response = await axios.post(
+    `${BASE_URL}/api/v1/savePrescription`,
+    payload,
+    {
+      params: {
+        page_url: '/master/opd-management/patients/consultation',
+        page_name: 'consultation',
+      },
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+        'x-entity-id': '1',
+        Accept: 'application/json',
+        'Content-Type': 'application/json',
+      },
+    },
+  );
+
+  return response.data;
+};
+
+// Get Laboratory Test List API
+export const getLaboratoryTestList = async (
+  accessToken: string,
+) => {
+  const response = await axios.get(
+    `${BASE_URL}/api/v1/laboratory_test_list`,
+    {
+      params: {
+        page_url: '/master/opd-management/patients/consultation',
+        page_name: 'consultation',
+      },
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+        'x-entity-id': '1',
+        Accept: 'application/json',
+      },
+    },
+  );
+
+  return response.data;
+};
+
+// Get Radiology Test List API
+export const getRadiologyTestList = async (
+  accessToken: string,
+) => {
+  const response = await axios.get(
+    `${BASE_URL}/api/v1/radiology_test_list`,
+    {
+      params: {
+        page_url: '/master/opd-management/patients/consultation',
+        page_name: 'consultation',
+      },
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+        'x-entity-id': '1',
+        Accept: 'application/json',
+      },
+    },
+  );
+
+  return response.data;
+};
+
+export interface ConsultationOrderTest {
+  test_id: number;
+  priority: string;
+}
+
+export interface CreateConsultationOrderPayload {
+  patient_id: number;
+  doctor_id: number;
+  department_id: number;
+  visit_id: number;
+  created_by: number;
+  total_amount: number;
+  discount_percent: number;
+  paid_amount: number;
+  laboratory_tests: ConsultationOrderTest[];
+  radiology_tests: ConsultationOrderTest[];
+}
+
+export const createConsultationOrder = async (
+  accessToken: string,
+  payload: CreateConsultationOrderPayload,
+) => {
+  const response = await axios.post(
+    `${BASE_URL}/api/v1/createConsultationOrder`,
+    payload,
+    {
+      params: {
+        page_url:
+          '/master/opd-management/patients/consultation',
+        page_name: 'consultation',
+      },
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+        'x-entity-id': '1',
+        Accept: 'application/json',
+        'Content-Type': 'application/json',
+      },
+    },
+  );
+
+  return response.data;
+};
+
+
+export interface MarkConsultationCompletePayload {
+  patient_id: number;
+  doctor_id: number;
+  department_id: number;
+  visit_id: number;
+  status: 'Completed';
+  updated_by: number;
+}
+
+export const markConsultationComplete = async (
+  accessToken: string,
+  payload: MarkConsultationCompletePayload,
+) => {
+  const response = await axios.post(
+    `${BASE_URL}/api/v1/mark-consultation-complete`,
+    payload,
+    {
+      params: {
+        page_url: '/master/opd-management/patients/consultation',
+        page_name: 'consultation',
+      },
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+        'x-entity-id': '1',
+        Accept: 'application/json',
+        'Content-Type': 'application/json',
       },
     },
   );
