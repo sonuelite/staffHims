@@ -1,19 +1,16 @@
 // import React, { useMemo, useState } from 'react';
 // import React, {useEffect, useMemo, useState} from 'react';
-import React, {useCallback, useMemo, useState} from 'react';
+import React, { useCallback, useMemo, useState } from 'react';
 // import {useFocusEffect} from '@react-navigation/native';
-import {
-  useFocusEffect,
-  useNavigation,
-} from '@react-navigation/native';
+import { useFocusEffect, useNavigation } from '@react-navigation/native';
 // import {NativeStackNavigationProp} from '@react-navigation/native-stack';
 // import type {NativeStackNavigationProp} from '@react-navigation/native-stack';
-import type {BottomTabNavigationProp} from '@react-navigation/bottom-tabs';
+import type { BottomTabNavigationProp } from '@react-navigation/bottom-tabs';
 import { DoctorTabParamList } from '../../../navigator/DoctorTabNavigator';
 import { setSelectedPatient } from '../../../store/consultSlice';
-import {RefreshControl} from 'react-native';
-import {ActivityIndicator} from 'react-native';
-import {getDoctorOpdDashboard} from '../../../network/api';
+import { RefreshControl } from 'react-native';
+import { ActivityIndicator } from 'react-native';
+import { getDoctorOpdDashboard } from '../../../network/api';
 import {
   View,
   Text,
@@ -33,7 +30,6 @@ import { useDispatch, useSelector } from 'react-redux';
 import { AppDispatch, RootState } from '../../../store/store';
 import DoctorHeader from '../../../components/doctorHeader/DoctorHeader';
 import SearchBar from '../../../components/searchBar/SearchBar';
-
 
 type QueueStatus = 'Waiting' | 'In Consult' | 'Completed';
 type FilterStatus = 'All' | QueueStatus;
@@ -177,136 +173,132 @@ const filters: FilterStatus[] = ['All', 'Waiting', 'In Consult', 'Completed'];
 
 export default function QueueScreen() {
   const insets = useSafeAreaInsets();
-    const {user, accessToken} = useSelector(
-  (state: RootState) => state.auth,
-);
-console.log('Redux Access Token:', accessToken);
-
+  const { user, accessToken } = useSelector((state: RootState) => state.auth);
+  console.log('Redux Access Token:', accessToken);
 
   const [search, setSearch] = useState('');
   const [activeFilter, setActiveFilter] = useState<FilterStatus>('All');
 
   // const user = useSelector((state: RootState) => state.auth.user);
 
+  // const [dashboardData, setDashboardData] = useState<any>(null);
+  const [dashboardData, setDashboardData] =
+    useState<DoctorDashboardResponse | null>(null);
 
-// const [dashboardData, setDashboardData] = useState<any>(null);
-const [dashboardData, setDashboardData] =
-  useState<DoctorDashboardResponse | null>(null);
-
-const [loading, setLoading] = useState(false);
-const [error, setError] = useState<string | null>(null);
-const [refreshing, setRefreshing] = useState(false);
-// const navigation =
-//   useNavigation<NativeStackNavigationProp>();
-// const navigation =
-//   useNavigation<NativeStackNavigationProp<RootStackParamList>>();
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [refreshing, setRefreshing] = useState(false);
+  // const navigation =
+  //   useNavigation<NativeStackNavigationProp>();
+  // const navigation =
+  //   useNavigation<NativeStackNavigationProp<RootStackParamList>>();
   const navigation =
-  useNavigation<BottomTabNavigationProp<DoctorTabParamList>>();
+    useNavigation<BottomTabNavigationProp<DoctorTabParamList>>();
 
-const dispatch = useDispatch<AppDispatch>();
+  const dispatch = useDispatch<AppDispatch>();
 
-// console.log('dashboardData-->', dashboardData);
+  // console.log('dashboardData-->', dashboardData);
 
-// useEffect(() => {
-//   if (!accessToken) return;
+  // useEffect(() => {
+  //   if (!accessToken) return;
 
-//   let active = true;
+  //   let active = true;
 
-//   const fetchDoctorDashboard = async () => {
-//     try {
-//       setLoading(true);
-//       setError(null);
+  //   const fetchDoctorDashboard = async () => {
+  //     try {
+  //       setLoading(true);
+  //       setError(null);
 
-//       const response = await getDoctorOpdDashboard(
-//         accessToken,
-//         'all',
-//       );
+  //       const response = await getDoctorOpdDashboard(
+  //         accessToken,
+  //         'all',
+  //       );
 
-//       if (!active) return;
+  //       if (!active) return;
 
-//       console.log(
-//         'Doctor OPD Dashboard Response:',
-//         JSON.stringify(response, null, 2),
-//       );
+  //       console.log(
+  //         'Doctor OPD Dashboard Response:',
+  //         JSON.stringify(response, null, 2),
+  //       );
 
-//       setDashboardData(response);
-//     } catch (error: any) {
-//       if (!active) return;
+  //       setDashboardData(response);
+  //     } catch (error: any) {
+  //       if (!active) return;
 
-//       const message =
-//         error.response?.data?.message ||
-//         error.message ||
-//         'Failed to fetch dashboard';
+  //       const message =
+  //         error.response?.data?.message ||
+  //         error.message ||
+  //         'Failed to fetch dashboard';
 
-//       console.log('Doctor Dashboard API Error:', message);
-//       setError(message);
-//     } finally {
-//       if (active) {
-//         setLoading(false);
-//       }
-//     }
-//   };
+  //       console.log('Doctor Dashboard API Error:', message);
+  //       setError(message);
+  //     } finally {
+  //       if (active) {
+  //         setLoading(false);
+  //       }
+  //     }
+  //   };
 
-//   fetchDoctorDashboard();
+  //   fetchDoctorDashboard();
 
-//   return () => {
-//     active = false;
-//   };
-// }, [accessToken]);
+  //   return () => {
+  //     active = false;
+  //   };
+  // }, [accessToken]);
 
+  const fetchDoctorDashboard = useCallback(
+    async (isRefreshing = false) => {
+      if (!accessToken) return;
 
-const fetchDoctorDashboard = useCallback(
-  async (isRefreshing = false) => {
-    if (!accessToken) return;
+      try {
+        if (isRefreshing) {
+          setRefreshing(true);
+        } else {
+          setLoading(true);
+        }
 
-    try {
-      if (isRefreshing) {
-        setRefreshing(true);
-      } else {
-        setLoading(true);
+        setError(null);
+
+        const response: DoctorDashboardResponse = await getDoctorOpdDashboard(
+          accessToken,
+          'all',
+        );
+
+        console.log(
+          'Doctor OPD Dashboard Response:',
+          JSON.stringify(response, null, 2),
+        );
+
+        setDashboardData(response);
+      } catch (err: any) {
+        const message =
+          err.response?.data?.message ||
+          err.message ||
+          'Failed to fetch dashboard';
+
+        console.log('Doctor Dashboard API Error:', message);
+        setError(message);
+      } finally {
+        setLoading(false);
+        setRefreshing(false);
       }
+    },
+    [accessToken],
+  );
 
-      setError(null);
+  // Refresh automatically when QueueScreen gets focus
+  useFocusEffect(
+    useCallback(() => {
+      fetchDoctorDashboard();
 
-      const response: DoctorDashboardResponse =
-        await getDoctorOpdDashboard(accessToken, 'all');
+      // No cleanup required for this basic version
+    }, [fetchDoctorDashboard]),
+  );
 
-      console.log(
-        'Doctor OPD Dashboard Response:',
-        JSON.stringify(response, null, 2),
-      );
-
-      setDashboardData(response);
-    } catch (err: any) {
-      const message =
-        err.response?.data?.message ||
-        err.message ||
-        'Failed to fetch dashboard';
-
-      console.log('Doctor Dashboard API Error:', message);
-      setError(message);
-    } finally {
-      setLoading(false);
-      setRefreshing(false);
-    }
-  },
-  [accessToken],
-);
-
-// Refresh automatically when QueueScreen gets focus
-useFocusEffect(
-  useCallback(() => {
-    fetchDoctorDashboard();
-
-    // No cleanup required for this basic version
-  }, [fetchDoctorDashboard]),
-);
-
-// Refresh manually when user pulls down
-const onRefresh = useCallback(() => {
-  fetchDoctorDashboard(true);
-}, [fetchDoctorDashboard]);
-
+  // Refresh manually when user pulls down
+  const onRefresh = useCallback(() => {
+    fetchDoctorDashboard(true);
+  }, [fetchDoctorDashboard]);
 
   console.log('User info:', user);
   console.log('Entity Name:', user?.entityList?.[0]?.entity_name);
@@ -322,14 +314,14 @@ const onRefresh = useCallback(() => {
   //   [],
   // );
 
-const patients = dashboardData?.data ?? [];
+  const patients = dashboardData?.data ?? [];
 
   const counts = {
-  All: dashboardData?.counts.all ?? 0,
-  Waiting: dashboardData?.counts.waiting ?? 0,
-  'In Consult': dashboardData?.counts.in_consult ?? 0,
-  Completed: dashboardData?.counts.completed ?? 0,
-};
+    All: dashboardData?.counts.all ?? 0,
+    Waiting: dashboardData?.counts.waiting ?? 0,
+    'In Consult': dashboardData?.counts.in_consult ?? 0,
+    Completed: dashboardData?.counts.completed ?? 0,
+  };
 
   // const filteredPatients = useMemo(() => {
   //   const query = search.trim().toLowerCase();
@@ -347,21 +339,21 @@ const patients = dashboardData?.data ?? [];
   // }, [search, activeFilter]);
 
   const filteredPatients = useMemo(() => {
-  const query = search.trim().toLowerCase();
+    const query = search.trim().toLowerCase();
 
-  return patients.filter(patient => {
-    const matchesFilter =
-      activeFilter === 'All' ||
-      patient.consultation_status.toLowerCase() ===
-        activeFilter.toLowerCase();
+    return patients.filter(patient => {
+      const matchesFilter =
+        activeFilter === 'All' ||
+        patient.consultation_status.toLowerCase() ===
+          activeFilter.toLowerCase();
 
-    const matchesSearch =
-      patient.patient_name.toLowerCase().includes(query) ||
-      patient.uhid.toLowerCase().includes(query);
+      const matchesSearch =
+        patient.patient_name.toLowerCase().includes(query) ||
+        patient.uhid.toLowerCase().includes(query);
 
-    return matchesFilter && matchesSearch;
-  });
-}, [dashboardData, search, activeFilter]);
+      return matchesFilter && matchesSearch;
+    });
+  }, [dashboardData, search, activeFilter]);
 
   // const renderPatient = (patient: QueuePatient) => (
   //   <TouchableOpacity
@@ -422,96 +414,78 @@ const patients = dashboardData?.data ?? [];
   //   </TouchableOpacity>
   // );
 
-  
-const renderPatient = (patient: QueuePatient) => (
-  <TouchableOpacity
-    key={patient.visit_id}
-    style={styles.patientCard}
-    activeOpacity={0.85}
-    onPress={() => {
-      // console.log('Visit ID:', patient.visit_id);
-      // console.log('Patient ID:', patient.patient_id);
-  //       navigation.navigate('ConsultScreen', {
-  //   patient,
-  // });
+  const renderPatient = (patient: QueuePatient) => (
+    <TouchableOpacity
+      key={patient.visit_id}
+      // style={styles.patientCard}
+      style={[
+  styles.patientCard,
+  patient.consultation_status.trim().toLowerCase() === 'completed' &&
+    styles.disabledPatientCard,
+]}
+      activeOpacity={0.85}
+      disabled={
+        patient.consultation_status.trim().toLowerCase() === 'completed'
+      }
+      onPress={() => {
         dispatch(setSelectedPatient(patient));
-      navigation.navigate('Consult');
-    }}>
+        navigation.navigate('Consult');
+      }}
+    >
+      <View style={styles.patientMain}>
+        <View style={styles.tokenBox}>
+          <Text style={styles.tokenText}>{patient.token_no}</Text>
+        </View>
 
-    <View style={styles.patientMain}>
-      <View style={styles.tokenBox}>
-        <Text style={styles.tokenText}>
-          {patient.token_no}
-        </Text>
-      </View>
+        <View style={styles.patientInfo}>
+          <View style={styles.nameRow}>
+            <Text style={styles.patientName} numberOfLines={1}>
+              {patient.patient_name}
+            </Text>
 
-      <View style={styles.patientInfo}>
-        <View style={styles.nameRow}>
-          <Text
-            style={styles.patientName}
-            numberOfLines={1}>
-            {patient.patient_name}
+            {patient.has_allergy && <View style={styles.alertDot} />}
+          </View>
+
+          <Text style={styles.patientDetails} numberOfLines={1}>
+            {patient.demographics_text ||
+              `${patient.department_name} · ${patient.gender}, ${patient.age}y`}
           </Text>
 
-          {patient.has_allergy && (
-            <View style={styles.alertDot} />
+          <Text style={styles.uhid}>{patient.uhid}</Text>
+        </View>
+
+        <View style={styles.patientActions}>
+          <View style={styles.statusPill}>
+            <Text style={styles.statusText}>{patient.consultation_status}</Text>
+          </View>
+
+          {patient.consultation_status.trim().toLowerCase() !== 'completed' && (
+            <View style={styles.openRow}>
+              <Text style={styles.openText}>Open</Text>
+              <ChevronRight size={15} color="#B8DAFF" />
+            </View>
           )}
         </View>
-
-        <Text
-          style={styles.patientDetails}
-          numberOfLines={1}>
-          {patient.demographics_text ||
-            `${patient.department_name} · ${patient.gender}, ${patient.age}y`}
-        </Text>
-
-        <Text style={styles.uhid}>
-          {patient.uhid}
-        </Text>
       </View>
 
-      <View style={styles.patientActions}>
-        <View style={styles.statusPill}>
-          <Text style={styles.statusText}>
-            {patient.consultation_status}
-          </Text>
-        </View>
+      <View style={styles.prescriptionRow}>
+        <Text style={styles.prescriptionText} numberOfLines={1}>
+          <Text style={styles.rxLabel}>Rx: </Text>
+          {patient.rx_display || 'No prescription'}
+        </Text>
 
-        <View style={styles.openRow}>
-          <Text style={styles.openText}>Open</Text>
-          <ChevronRight
-            size={15}
-            color="#B8DAFF"
-          />
-        </View>
+        {patient.has_allergy && !!patient.allergies && (
+          <View style={styles.allergyBadge}>
+            <AlertTriangle size={14} color="#D97706" />
+
+            <Text style={styles.allergyText} numberOfLines={1}>
+              {patient.allergies}
+            </Text>
+          </View>
+        )}
       </View>
-    </View>
-
-    <View style={styles.prescriptionRow}>
-      <Text
-        style={styles.prescriptionText}
-        numberOfLines={1}>
-        <Text style={styles.rxLabel}>Rx: </Text>
-        {patient.rx_display || 'No prescription'}
-      </Text>
-
-      {patient.has_allergy && !!patient.allergies && (
-        <View style={styles.allergyBadge}>
-          <AlertTriangle
-            size={14}
-            color="#D97706"
-          />
-
-          <Text
-            style={styles.allergyText}
-            numberOfLines={1}>
-            {patient.allergies}
-          </Text>
-        </View>
-      )}
-    </View>
-  </TouchableOpacity>
-);
+    </TouchableOpacity>
+  );
 
   return (
     <View style={styles.container}>
@@ -555,46 +529,43 @@ const renderPatient = (patient: QueuePatient) => (
               </Text>
             </View>
           </View> */}
-          
-<View style={styles.statsRow}>
-  <View style={styles.statCard}>
-    <Clock3 size={15} color="#2563EB" />
-    <Text style={styles.statText} numberOfLines={1}>
-      Avg Wait:{' '}
-      <Text style={styles.statValue}>
-        {dashboardData?.metrics.avg_wait_time ?? '--'}
-      </Text>
-    </Text>
-  </View>
 
-  <View style={styles.statCard}>
-    <Users size={15} color="#455B79" />
-    <Text style={styles.statText} numberOfLines={1}>
-      Total:{' '}
-      <Text style={styles.statValue}>
-        {dashboardData?.metrics.total_today ?? 0}
-      </Text>
-    </Text>
-  </View>
+          <View style={styles.statsRow}>
+            <View style={styles.statCard}>
+              <Clock3 size={15} color="#2563EB" />
+              <Text style={styles.statText} numberOfLines={1}>
+                Avg Wait:{' '}
+                <Text style={styles.statValue}>
+                  {dashboardData?.metrics.avg_wait_time ?? '--'}
+                </Text>
+              </Text>
+            </View>
 
-  <View style={[styles.statCard, styles.warningStat]}>
-    <AlertTriangle size={15} color="#D97706" />
-    <Text
-      style={styles.warningStatText}
-      numberOfLines={1}>
-      Allergies: {dashboardData?.metrics.allergies_count ?? 0}
-    </Text>
-  </View>
-</View>
+            <View style={styles.statCard}>
+              <Users size={15} color="#455B79" />
+              <Text style={styles.statText} numberOfLines={1}>
+                Total:{' '}
+                <Text style={styles.statValue}>
+                  {dashboardData?.metrics.total_today ?? 0}
+                </Text>
+              </Text>
+            </View>
 
+            <View style={[styles.statCard, styles.warningStat]}>
+              <AlertTriangle size={15} color="#D97706" />
+              <Text style={styles.warningStatText} numberOfLines={1}>
+                Allergies: {dashboardData?.metrics.allergies_count ?? 0}
+              </Text>
+            </View>
+          </View>
 
           {/* Search */}
-          
-            <SearchBar
+
+          <SearchBar
             value={search}
             onChangeText={setSearch}
             placeholder="Search by name or UHID"
-            />
+          />
 
           {/* Filters */}
           <View style={styles.filterRow}>
@@ -641,41 +612,37 @@ const renderPatient = (patient: QueuePatient) => (
               </View>
             )}
           </ScrollView> */}
-          
-<ScrollView
-  style={{flex: 1}}
-  contentContainerStyle={{flexGrow: 1, paddingBottom: 20}}
-  showsVerticalScrollIndicator={false}
-  refreshControl={
-    <RefreshControl
-      refreshing={refreshing}
-      onRefresh={onRefresh}
-      colors={['#153E6C']}
-      tintColor="#153E6C"
-    />
-  }>
-  {loading && !dashboardData ? (
-    <View style={styles.emptyContainer}>
-      <ActivityIndicator size="large" color="#153E6C" />
-      <Text style={styles.emptyText}>
-        Loading patients...
-      </Text>
-    </View>
-  ) : error && !dashboardData ? (
-    <View style={styles.emptyContainer}>
-      <Text style={styles.emptyText}>{error}</Text>
-    </View>
-  ) : filteredPatients.length > 0 ? (
-    filteredPatients.map(renderPatient)
-  ) : (
-    <View style={styles.emptyContainer}>
-      <Text style={styles.emptyText}>
-        No patients found
-      </Text>
-    </View>
-  )}
-</ScrollView>
 
+          <ScrollView
+            style={{ flex: 1 }}
+            contentContainerStyle={{ flexGrow: 1, paddingBottom: 20 }}
+            showsVerticalScrollIndicator={false}
+            refreshControl={
+              <RefreshControl
+                refreshing={refreshing}
+                onRefresh={onRefresh}
+                colors={['#153E6C']}
+                tintColor="#153E6C"
+              />
+            }
+          >
+            {loading && !dashboardData ? (
+              <View style={styles.emptyContainer}>
+                <ActivityIndicator size="large" color="#153E6C" />
+                <Text style={styles.emptyText}>Loading patients...</Text>
+              </View>
+            ) : error && !dashboardData ? (
+              <View style={styles.emptyContainer}>
+                <Text style={styles.emptyText}>{error}</Text>
+              </View>
+            ) : filteredPatients.length > 0 ? (
+              filteredPatients.map(renderPatient)
+            ) : (
+              <View style={styles.emptyContainer}>
+                <Text style={styles.emptyText}>No patients found</Text>
+              </View>
+            )}
+          </ScrollView>
         </View>
       </View>
     </View>
@@ -944,4 +911,7 @@ const styles = StyleSheet.create({
     color: '#7D8DA4',
     fontSize: 14,
   },
+  disabledPatientCard: {
+  opacity: 0.6,
+},
 });

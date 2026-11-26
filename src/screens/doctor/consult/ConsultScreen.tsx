@@ -57,7 +57,12 @@ import {
   FlaskConical,
   Radiation,
 } from 'lucide-react-native';
+// import SignatureCanvas, {
+//   SignatureViewRef,
+// } from 'react-native-signature-canvas';
 import DoctorHeader from '../../../components/doctorHeader/DoctorHeader';
+import SignatureModal from '../../../components/signatureModal/SignatureModal';
+
 
 type ConsultationTab = 'Vitals' | 'Clinical Notes' | 'Prescription' | 'Orders';
 
@@ -254,9 +259,15 @@ export default function ConsultScreen() {
   const insets = useSafeAreaInsets();
   const dispatch = useDispatch<AppDispatch>();
 
-  const patient = useSelector(
-    (state: RootState) => state.consult.selectedPatient,
-  );
+const selectedPatient = useSelector(
+  (state: RootState) => state.consult.selectedPatient,
+);
+
+const patient =
+  selectedPatient?.consultation_status?.trim().toLowerCase() ===
+  'completed'
+    ? null
+    : selectedPatient;
 
   const accessToken = useSelector((state: RootState) => state.auth.accessToken);
 
@@ -285,6 +296,27 @@ export default function ConsultScreen() {
   const [clinicalNotesError, setClinicalNotesError] = useState<string | null>(
     null,
   );
+
+const [showSignatureModal, setShowSignatureModal] =
+  useState(false);
+
+const [signature, setSignature] = useState('');
+
+
+useEffect(() => {
+  setSignature('');
+  setShowSignatureModal(false);
+}, [patient?.patient_id, patient?.visit_id, doctor?.employee_id]);
+
+const handleSaveSignature = (signatureData: string) => {
+  setSignature(signatureData);
+  setShowSignatureModal(false);
+
+  Alert.alert(
+    'Success',
+    'Signature captured successfully.',
+  );
+};
 
   type Medicine = {
     id: number;
@@ -401,7 +433,8 @@ export default function ConsultScreen() {
   // );
 
   const handleDispatchOrders = async () => {
-    if (savingOrder) return;
+    // if (savingOrder) return;
+    if (savingOrder || completingConsultation) return;
 
     if (!patient || !doctor || !accessToken) {
       Alert.alert('Error', 'Patient or doctor session is unavailable.');
@@ -627,7 +660,11 @@ export default function ConsultScreen() {
           return;
         }
 
-        const firstPatient = response.data?.[0];
+        // const firstPatient = response.data?.[0];
+        const firstPatient = response.data?.find(
+          item =>
+            item.consultation_status?.trim().toLowerCase() !== 'completed',
+        );
 
         if (firstPatient) {
           dispatch(setSelectedPatient(firstPatient));
@@ -1154,99 +1191,245 @@ export default function ConsultScreen() {
   const patientAge = patient?.age ?? '--';
   const patientAllergies = patient?.allergies;
 
+  // const handleCompleteConsultation = () => {
+  //   if (completingConsultation) return;
+
+  //   if (!patient || !doctor || !accessToken) {
+  //     Alert.alert('Error', 'Patient or doctor session is unavailable.');
+  //     return;
+  //   }
+
+  //   const departmentId = Number(patient.department_id);
+
+  //   if (!Number.isSafeInteger(departmentId) || departmentId <= 0) {
+  //     Alert.alert('Missing Department', 'A valid department ID is required.');
+  //     return;
+  //   }
+
+  //   Alert.alert(
+  //     'Complete Consultation',
+  //     `Are you sure you want to complete the consultation for ${patient.patient_name}?`,
+  //     [
+  //       {
+  //         text: 'Cancel',
+  //         style: 'cancel',
+  //       },
+  //       {
+  //         text: 'Complete',
+  //         onPress: async () => {
+  //           const payload: MarkConsultationCompletePayload = {
+  //             patient_id: patient.patient_id,
+  //             doctor_id: doctor.employee_id,
+  //             department_id: departmentId,
+  //             visit_id: patient.visit_id,
+  //             status: 'Completed',
+  //             updated_by: doctor.employee_id,
+  //           };
+
+  //           try {
+  //             setCompletingConsultation(true);
+
+  //             console.log(
+  //               'Complete Consultation Payload:',
+  //               JSON.stringify(payload, null, 2),
+  //             );
+
+  //             const response = await markConsultationComplete(
+  //               accessToken,
+  //               payload,
+  //             );
+
+  //             console.log(
+  //               'Complete Consultation Response:',
+  //               JSON.stringify(response, null, 2),
+  //             );
+
+  //             if (response?.success === false) {
+  //               throw new Error(
+  //                 response.message || 'Failed to complete consultation.',
+  //               );
+  //             }
+
+  //             Alert.alert(
+  //               'Success',
+  //               response?.message || 'Consultation completed successfully.',
+  //               [
+  //                 {
+  //                   text: 'OK',
+  //                   onPress: () => {
+  //                     dispatch(setSelectedPatient(null));
+  //                     navigation.navigate('Queue');
+  //                   },
+  //                 },
+  //               ],
+  //             );
+  //           } catch (error: unknown) {
+  //             const message = axios.isAxiosError(error)
+  //               ? error.response?.data?.message || error.message
+  //               : error instanceof Error
+  //               ? error.message
+  //               : 'Failed to complete consultation.';
+
+  //             console.log(
+  //               'Complete Consultation Error:',
+  //               axios.isAxiosError(error) ? error.response?.data : message,
+  //             );
+
+  //             Alert.alert('Error', message);
+  //           } finally {
+  //             setCompletingConsultation(false);
+  //           }
+  //         },
+  //       },
+  //     ],
+  //   );
+  // };
+
   const handleCompleteConsultation = () => {
-    if (completingConsultation) return;
+  if (completingConsultation || savingOrder) return;
 
-    if (!patient || !doctor || !accessToken) {
-      Alert.alert('Error', 'Patient or doctor session is unavailable.');
-      return;
-    }
-
-    const departmentId = Number(patient.department_id);
-
-    if (!Number.isSafeInteger(departmentId) || departmentId <= 0) {
-      Alert.alert('Missing Department', 'A valid department ID is required.');
-      return;
-    }
-
+  if (!patient || !doctor || !accessToken) {
     Alert.alert(
-      'Complete Consultation',
-      `Are you sure you want to complete the consultation for ${patient.patient_name}?`,
+      'Error',
+      'Patient or doctor session is unavailable.',
+    );
+    return;
+  }
+
+  // Check if selected tests are pending dispatch
+  if (selectedOrders.length > 0) {
+    Alert.alert(
+      'Pending Orders',
+      'Please dispatch the selected laboratory or radiology tests before completing the consultation.',
       [
         {
           text: 'Cancel',
           style: 'cancel',
         },
         {
-          text: 'Complete',
-          onPress: async () => {
-            const payload: MarkConsultationCompletePayload = {
-              patient_id: patient.patient_id,
-              doctor_id: doctor.employee_id,
-              department_id: departmentId,
-              visit_id: patient.visit_id,
-              status: 'Completed',
-              updated_by: doctor.employee_id,
-            };
-
-            try {
-              setCompletingConsultation(true);
-
-              console.log(
-                'Complete Consultation Payload:',
-                JSON.stringify(payload, null, 2),
-              );
-
-              const response = await markConsultationComplete(
-                accessToken,
-                payload,
-              );
-
-              console.log(
-                'Complete Consultation Response:',
-                JSON.stringify(response, null, 2),
-              );
-
-              if (response?.success === false) {
-                throw new Error(
-                  response.message || 'Failed to complete consultation.',
-                );
-              }
-
-              Alert.alert(
-                'Success',
-                response?.message || 'Consultation completed successfully.',
-                [
-                  {
-                    text: 'OK',
-                    onPress: () => {
-                      dispatch(setSelectedPatient(null));
-                      navigation.navigate('Queue');
-                    },
-                  },
-                ],
-              );
-            } catch (error: unknown) {
-              const message = axios.isAxiosError(error)
-                ? error.response?.data?.message || error.message
-                : error instanceof Error
-                ? error.message
-                : 'Failed to complete consultation.';
-
-              console.log(
-                'Complete Consultation Error:',
-                axios.isAxiosError(error) ? error.response?.data : message,
-              );
-
-              Alert.alert('Error', message);
-            } finally {
-              setCompletingConsultation(false);
-            }
-          },
+          text: 'Go to Orders',
+          onPress: () => setActiveTab('Orders'),
         },
       ],
     );
-  };
+    return;
+  }
+
+  // Check if doctor has signed
+  if (!signature.trim()) {
+    Alert.alert(
+      'Signature Required',
+      'Please sign before completing the consultation.',
+      [
+        {
+          text: 'Cancel',
+          style: 'cancel',
+        },
+        {
+          text: 'Sign Now',
+          onPress: () => setShowSignatureModal(true),
+        },
+      ],
+    );
+    return;
+  }
+
+  // Validate department ID
+  const departmentId = Number(patient.department_id);
+
+  if (!Number.isSafeInteger(departmentId) || departmentId <= 0) {
+    Alert.alert(
+      'Missing Department',
+      'A valid department ID is required.',
+    );
+    return;
+  }
+
+  // Confirm consultation completion
+  Alert.alert(
+    'Complete Consultation',
+    `Are you sure you want to complete the consultation for ${patient.patient_name}?`,
+    [
+      {
+        text: 'Cancel',
+        style: 'cancel',
+      },
+      {
+        text: 'Complete',
+        onPress: async () => {
+          const payload: MarkConsultationCompletePayload = {
+            patient_id: patient.patient_id,
+            doctor_id: doctor.employee_id,
+            department_id: departmentId,
+            visit_id: patient.visit_id,
+            status: 'Completed',
+            updated_by: doctor.employee_id,
+          };
+
+          try {
+            setCompletingConsultation(true);
+
+            console.log(
+              'Complete Consultation Payload:',
+              JSON.stringify(payload, null, 2),
+            );
+
+            const response = await markConsultationComplete(
+              accessToken,
+              payload,
+            );
+
+            console.log(
+              'Complete Consultation Response:',
+              JSON.stringify(response, null, 2),
+            );
+
+            if (response?.success === false) {
+              throw new Error(
+                response.message ||
+                  'Failed to complete consultation.',
+              );
+            }
+
+            Alert.alert(
+              'Success',
+              response?.message ||
+                'Consultation completed successfully.',
+              [
+                {
+                  text: 'OK',
+                  onPress: () => {
+                    setSignature('');
+                    setSelectedOrders([]);
+                    dispatch(setSelectedPatient(null));
+                    navigation.navigate('Queue');
+                  },
+                },
+              ],
+            );
+          } catch (error: unknown) {
+            const message = axios.isAxiosError(error)
+              ? error.response?.data?.message || error.message
+              : error instanceof Error
+              ? error.message
+              : 'Failed to complete consultation.';
+
+            console.log(
+              'Complete Consultation Error:',
+              axios.isAxiosError(error)
+                ? error.response?.data
+                : message,
+            );
+
+            Alert.alert('Error', message);
+          } finally {
+            setCompletingConsultation(false);
+          }
+        },
+      },
+    ],
+  );
+};
 
   const renderVitals = () => (
     <View style={styles.section}>
@@ -2331,7 +2514,12 @@ export default function ConsultScreen() {
 
       {/* Same header as QueueScreen */}
       <DoctorHeader />
-
+<SignatureModal
+  visible={showSignatureModal}
+  doctorName={doctorName}
+  onClose={() => setShowSignatureModal(false)}
+  onSave={handleSaveSignature}
+/>
       {/* Consultation actions */}
       <View style={styles.actionHeader}>
         <TouchableOpacity
@@ -2344,17 +2532,44 @@ export default function ConsultScreen() {
         </TouchableOpacity>
 
         <View style={styles.headerActions}>
-          <TouchableOpacity style={styles.signButton} onPress={() => {}}>
+          {/* <TouchableOpacity style={styles.signButton} onPress={() => {}}>
             <PenTool size={17} color="#1558FF" />
             <Text style={styles.signText}>Sign</Text>
-          </TouchableOpacity>
+          </TouchableOpacity> */}
+          <TouchableOpacity
+  style={[
+    styles.signButton,
+    signature ? {borderColor: '#10A64B'} : {},
+  ]}
+  onPress={() => {
+    if (!patient || !doctor || !accessToken) {
+      Alert.alert('Error', 'Patient or doctor is unavailable.');
+      return;
+    }
+
+    setShowSignatureModal(true);
+  }}>
+  {signature ? (
+    <CheckCircle2 size={17} color="#10A64B" />
+  ) : (
+    <PenTool size={17} color="#1558FF" />
+  )}
+
+  <Text
+    style={[
+      styles.signText,
+      signature ? {color: '#10A64B'} : {},
+    ]}>
+    {signature ? 'Signed' : 'Sign'}
+  </Text>
+</TouchableOpacity>
 
           {/* <TouchableOpacity style={styles.completeButton} onPress={() => {}}>
             <CheckCircle2 size={18} color="#FFFFFF" />
             <Text style={styles.completeText}>Complete</Text>
           </TouchableOpacity> */}
 
-          <TouchableOpacity
+          {/* <TouchableOpacity
             style={[
               styles.completeButton,
               completingConsultation && { opacity: 0.6 },
@@ -2372,7 +2587,32 @@ export default function ConsultScreen() {
             <Text style={styles.completeText}>
               {completingConsultation ? 'Completing...' : 'Complete'}
             </Text>
-          </TouchableOpacity>
+          </TouchableOpacity> */}
+          <TouchableOpacity
+  style={[
+    styles.completeButton,
+    (completingConsultation || savingOrder) && {
+      opacity: 0.6,
+    },
+  ]}
+  onPress={handleCompleteConsultation}
+  disabled={completingConsultation || savingOrder}
+  activeOpacity={0.8}>
+  {completingConsultation ? (
+    <ActivityIndicator
+      size="small"
+      color="#FFFFFF"
+    />
+  ) : (
+    <CheckCircle2 size={18} color="#FFFFFF" />
+  )}
+
+  <Text style={styles.completeText}>
+    {completingConsultation
+      ? 'Completing...'
+      : 'Complete'}
+  </Text>
+</TouchableOpacity>
         </View>
       </View>
 
